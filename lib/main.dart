@@ -1,126 +1,218 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_with_redux/user.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert' ;
+import 'package:flutter_redux/flutter_redux.dart';
+import 'package:flutter_with_redux/models/models.dart';
+import 'package:flutter_with_redux/redux/actions.dart';
+import 'package:flutter_with_redux/second_page.dart';
+import 'package:flutter_with_redux/views/add_item.dart';
+import 'package:flutter_with_redux/views/item_list.dart';
+import 'package:flutter_with_redux/views/remove_item_button.dart';
+import 'package:redux/redux.dart';
+import 'redux/reducers.dart';
 
 
-void main() => runApp(MyApp());
+
+
+
+//int counterReducer(int state , dynamic action){
+//  if(action == Actions.Increment){
+//    return state + 1;
+//  }
+//
+//  return state;
+//}
+
+
+void main() {
+  final store = Store<AppState>(addStateReducer , initialState: AppState.initialize());
+  runApp(MyApp(
+      title: 'My Flutter Redux App',
+      store: store,
+  ));
+}
 
 
 class MyApp extends StatelessWidget {
+
+  final Store<AppState> store;
+  final title;
+
+  MyApp({Key key, this.store, this.title}) : super(key: key);
+
+
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: "Flutter + Redux",
-      theme: ThemeData.dark(),
-      home: JsonDecode(),
-      debugShowCheckedModeBanner: false,
+    return StoreProvider(
+      store: store,
+      child: MaterialApp(
+        theme: ThemeData.dark(),
+        title : title,
+        home: HomePage(),
+        debugShowCheckedModeBanner: false,
+      ));
+  }
+}
+
+
+
+class HomePage extends StatefulWidget {
+  @override
+  _HomePageState createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Home page')),
+      body : StoreConnector<AppState, ViewModel>(
+          converter:(Store<AppState> store )=> ViewModel.create(store),
+          builder: (BuildContext context, ViewModel vm){
+            return Column(
+              children: <Widget>[
+                Text(vm.items != null && vm.items.length > 0 ? vm.items[vm.items.length -1 ].body ?? '' : ''),
+                AddItemWidget(vm: vm),
+                Expanded(child: ItemListWidget(vm:vm)),
+                RemoveItemButton(vm: vm),
+
+              ],
+            );
+          }
+      )
     );
   }
 }
 
 
-class JsonDecode extends StatefulWidget {
+class AddItemWidget extends StatefulWidget {
+
+  final ViewModel vm;
+
+  AddItemWidget({this.vm});
+
   @override
-  _JsonDecodeState createState() => _JsonDecodeState();
+  _AddItemWidgetState createState() => _AddItemWidgetState();
 }
 
-class _JsonDecodeState extends State<JsonDecode> {
+class _AddItemWidgetState extends State<AddItemWidget> {
 
-  void _fetchData() async {
-    final res = await http.get('http://192.168.1.28:3000');
-    Map<String, dynamic> data = json.decode(res.body);
+  final TextEditingController _c = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.pink,
+      child: TextField(
+        controller: _c,
+        decoration: InputDecoration(
+          hintText: 'Add Item'
+        ),
+        onSubmitted: (String s){
+          widget.vm.onAddItem(s);
+          _c.text = '';
+        },
+      ),
+    );
+  }
+}
 
 
-    SeatLayoutData d = SeatLayoutData.fromJson(data);
-    print(d);
+class ItemListWidget extends StatefulWidget {
+
+  final ViewModel vm;
+
+  ItemListWidget({this.vm});
+
+  @override
+  _ItemListWidgetState createState() => _ItemListWidgetState();
+}
+
+class _ItemListWidgetState extends State<ItemListWidget> {
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: widget.vm.items.length,
+      itemBuilder: (context, i){
+        return ListTile(
+            title: Text(widget.vm.items[i].body),
+            leading: IconButton(
+            icon: Icon(Icons.delete),
+            onPressed: () {
+              widget.vm.onRemoveItem(widget.vm.items[i]);
+            }
+            ,
+          ),
+        );
+      },
+    );
+  }
+}
 
 
-    for (var v in d.seatLayouts) {
-      for (var s in v.seats) {
-        print('Seat Name ${s.SeatName} and Seat Price is ${s.Price}');
-        }
+class RemoveItemButton extends StatefulWidget {
+
+  final ViewModel vm;
+
+  RemoveItemButton({this.vm});
+
+  @override
+  _RemoveItemButtonState createState() => _RemoveItemButtonState();
+}
+
+class _RemoveItemButtonState extends State<RemoveItemButton> {
+  @override
+  Widget build(BuildContext context) {
+    return
+    Row(
+      mainAxisSize: MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: <Widget>[
+        RaisedButton(onPressed: (){
+          widget.vm.onRemoveItems();
+        }, child: Text('Delete All Items')),
+        RaisedButton(onPressed: (){
+          Navigator.push(context, MaterialPageRoute(builder: (c){
+            return SecondPage();
+          }));
+        }, child: Text('Next Page')),
+      ],
+    );
+  }
+}
+
+
+
+class ViewModel{
+  final List<Item> items;
+  final Function(String) onAddItem;
+  final Function(Item) onRemoveItem;
+  final Function() onRemoveItems;
+
+  ViewModel({this.items, this.onAddItem, this.onRemoveItem, this.onRemoveItems});
+
+  factory ViewModel.create(Store<AppState> store){
+    _onAddItem(String body){
+      store.dispatch(AddItemAction(body));
     }
 
-  }
+    _onRemoveItem(Item item){
+      store.dispatch(RemoveItemAction(item));
+    }
 
+    _onRemoveItems(){
+      store.dispatch(RemoveItemsAction());
+    }
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchData();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: Text('he'),),
+    return ViewModel(
+      items: store.state.items,
+      onAddItem: _onAddItem,
+      onRemoveItem: _onRemoveItem,
+      onRemoveItems: _onRemoveItems,
     );
-  }
-}
 
-
-
-class Home extends StatefulWidget {
-  @override
-  _HomeState createState() => _HomeState();
-}
-
-class _HomeState extends State<Home> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: ListView.builder(
-          itemCount: 10,
-          itemBuilder: (context,i){
-            return ListTile(
-              title: Text('hello all $i'),
-              leading: Checkbox(value: false, onChanged: null),
-            );
-      }),
-      floatingActionButton: FloatingActionButton(onPressed: (){_showPopup(context);},child: Icon(Icons.add),),
-    );
   }
 
-  void _showPopup(BuildContext context) {
-    showDialog(context: context, builder: (context){
-       return new AlertDialog(
-         contentPadding: const EdgeInsets.all(16.0),
-         content: Row(
-           children: <Widget>[
-             Expanded(
-               child: TextField(
-                 decoration: InputDecoration(
-                   labelText: 'Item name' , hintText: 'eg. Apple'
-                 ),
-               ),
-             )
-           ],
-         ),
-         actions: <Widget>[
-           FlatButton(
-             child: Text('CANCEL'),
-             onPressed: (){
-               Navigator.pop(context);
-             },
-           ),
-           FlatButton(
-             child: Text('ADD'),
-             onPressed: (){
-               Navigator.pop(context);
-             },
-           )
-         ],
-       );
-    });
-  }
 }
 
-
-class CartItem{
-  String name;
-  bool checked;
-  CartItem({this.name, this.checked});
-}
 
 
